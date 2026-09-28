@@ -3,73 +3,87 @@ import re
 import requests
 import streamlit as st
 import pytz
+import pandas as pd
 
 # 페이지 설정
 st.set_page_config(page_title="우리 학교 달력별 급식", page_icon="📅", layout="centered")
 
 st.title("📅 우리 학교 달력별 급식")
-st.caption("송탄고등학교 전용 중식 급식 조회 페이지입니다.")
+st.caption("송탄고등학교 전용 중식 급식 조회 및 후식 통계 분석 페이지입니다.")
 
 # 송탄고등학교 고정 정보 및 API URL
 MEAL_INFO_URL = "https://open.neis.go.kr/hub/mealServiceDietInfo"
 OFFICE_CODE = "J10"      # 경기도교육청
 SCHOOL_CODE = "7530480"  # 송탄고등학교
 
+# 후식 키워드 분류 정의
+DESSERT_KEYWORDS = {
+    "과일": ["사과", "배", "귤", "바나나", "포도", "수박", "참외", "토마토", "딸기", "파인애플", "키위", "자두", "복숭아", "샤인머스켓", "멜론"],
+    "음료수": ["주스", "우유", "요구르트", "에이드", "식혜", "수정과", "차", "라떼", "스무디", "음료", "야쿠르트", "요플레"],
+    "디저트": ["케이크", "빵", "파이", "쿠키", "마카롱", "푸딩", "아이스크림", "슈", "도넛", "와플", "떡", "브라우니", "에그타르트", "젤리"]
+}
 
-def fetch_meal_info(ymd: str):
-    """지정한 날짜(YYYYMMDD)의 송탄고등학교 중식 급식 메뉴를 조회하는 함수"""
+
+def fetch_meal_range(from_ymd: str, to_ymd: str):
+    """기간(FROM~TO) 내의 급식 데이터를 조회하는 함수"""
     params = {
         "Type": "json",
         "ATPT_OFCDC_SC_CODE": OFFICE_CODE,
         "SD_SCHUL_CODE": SCHOOL_CODE,
         "MMEAL_SC_CODE": "2",  # 중식
-        "MLSV_FROM_YMD": ymd,
-        "MLSV_TO_YMD": ymd,
+        "MLSV_FROM_YMD": from_ymd,
+        "MLSV_TO_YMD": to_ymd,
+        "pSize": 100
     }
     try:
-        response = requests.get(MEAL_INFO_URL, params=params, timeout=5)
+        response = requests.get(MEAL_INFO_URL, params=params, timeout=10)
         data = response.json()
-
         if "mealServiceDietInfo" in data:
-            rows = data["mealServiceDietInfo"][1]["row"]
-            if rows:
-                return rows[0]
-        return None
+            return data["mealServiceDietInfo"][1]["row"]
+        return []
     except Exception as e:
-        st.error(f"급식 정보를 불러오는 중 오류가 발생했습니다: {e}")
-        return None
+        st.error(f"급식 데이터를 불러오는 중 오류가 발생했습니다: {e}")
+        return []
 
 
 def parse_menu_items(dish_nm: str, show_allergy: bool) -> list:
-    """
-    DDISH_NM 텍스트(<br/>로 구분)를 개별 메뉴 항목 리스트로 분리하고,
-    show_allergy 옵션에 따라 알레르기 번호(괄호 숫자 및 점)를 제거하거나 유지합니다.
-    """
-    # <br/>, <br>, <br /> 태그 기준으로 분리
+    """메뉴 텍스트를 개별 항목으로 분리하고 알레르기 번호 제거 옵션을 적용하는 함수"""
     raw_items = re.split(r"<br\s*/?>", dish_nm)
     cleaned_items = []
-
     for item in raw_items:
         item = item.strip()
         if not item:
             continue
-
         if not show_allergy:
-            # 괄호 안의 숫자, 점, 공백 제거 (예: "쌀밥 (1.2.3)" -> "쌀밥", "닭갈비(5.6.13.)" -> "닭갈비")
             item = re.sub(r"\s*\([\d\.\s]+\)", "", item)
-
         cleaned_items.append(item.strip())
-
     return cleaned_items
+
+
+def classify_desserts(dish_nm: str, selected_categories: list) -> list:
+    """메뉴에서 선택된 카테고리(과일/음료수/디저트)에 해당하는 후식을 추출하는 함수"""
+    raw_items = re.split(r"<br\s*/?>", dish_nm)
+    found_desserts = []
+
+    for item in raw_items:
+        # 알레르기 번호 떼고 메뉴 이름만 추출
+        clean_name = re.sub(r"\s*\([\d\.\s]+\)", "", item).strip()
+        
+        for category in selected_categories:
+            keywords = DESSERT_KEYWORDS.get(category, [])
+            if any(kw in clean_name for kw in keywords):
+                found_desserts.append((clean_name, category))
+                break
+
+    return found_desserts
 
 
 # ---------------- [ 메인 화면 구성 ] ----------------
 
-# 한국 시간(KST) 기준 오늘 날짜 구하기
 kst = pytz.timezone("Asia/Seoul")
 today_kst = datetime.datetime.now(kst).date()
 
-# 1. 날짜 선택 및 알레르기 스위치 (나란히 배치)
+# 1. 날짜 선택 및 알레르기 스위치
 col_date, col_toggle = st.columns([2, 1], vertical_alignment="bottom")
 
 with col_date:
@@ -80,19 +94,18 @@ with col_toggle:
 
 date_str = selected_date.strftime("%Y%m%d")
 
-# 2. 급식 정보 API 호출
-with st.spinner("급식 정보를 가져오는 중입니다..."):
-    meal_data = fetch_meal_info(date_str)
+# 단일 날짜 급식 정보 가져오기
+single_meal_list = fetch_meal_range(date_str, date_str)
+meal_data = single_meal_list[0] if single_meal_list else None
 
 st.markdown("---")
 
-# 3. 급식 정보 표시
+# 2. 날짜별 급식 카드로 표시
 if meal_data:
     raw_dish = meal_data.get("DDISH_NM", "")
     calorie_info = meal_data.get("CAL_INFO", "정보 없음")
     menu_list = parse_menu_items(raw_dish, show_allergy)
 
-    # 지표 카드 (메뉴 가짓수 & 칼로리)
     metric_col1, metric_col2 = st.columns(2)
     with metric_col1:
         st.metric(label="🍴 메뉴 가짓수", value=f"{len(menu_list)}개")
@@ -101,7 +114,6 @@ if meal_data:
 
     st.markdown("### 🥗 오늘의 급식 메뉴")
 
-    # 메뉴 항목을 그리드 카드 형태로 나란히 표시 (한 줄에 최대 3개씩)
     cols_per_row = 3
     for i in range(0, len(menu_list), cols_per_row):
         row_items = menu_list[i : i + cols_per_row]
@@ -112,8 +124,96 @@ if meal_data:
 
     if show_allergy:
         st.caption("※ 메뉴 뒤 괄호 속 숫자는 알레르기 유발 물질 번호입니다.")
-
 else:
-    # 급식이 없는 날 안내 메시지
     st.warning("⚠️ 급식이 없는 날입니다.")
     st.info("주말, 공휴일, 재량휴업일 또는 방학기간에는 급식 정보가 제공되지 않습니다.")
+
+st.markdown("---")
+
+# 3. [신규 기능] 최근 3개월 후식 통계 분석 섹션
+st.subheader("📊 최근 3개월 후식 분석 & 요일별 통계")
+st.caption("지난 90일간의 급식 메뉴 데이터를 분석하여 요일별 후식 제공 빈도를 확인합니다.")
+
+# 3달치(90일) 날짜 범위 계산
+start_date = today_kst - datetime.timedelta(days=90)
+start_str = start_date.strftime("%Y%m%d")
+end_str = today_kst.strftime("%Y%m%d")
+
+@st.cache_data(ttl=3600)
+def load_3months_data(s_date, e_date):
+    return fetch_meal_range(s_date, e_date)
+
+with st.spinner("최근 3개월 급식 데이터를 분석 중입니다..."):
+    quarter_data = load_3months_data(start_str, end_str)
+
+if quarter_data:
+    # 체크박스 필터 선택 UI
+    st.write("**확인하고 싶은 후식 종류를 선택하세요:**")
+    chk_cols = st.columns(3)
+    with chk_cols[0]:
+        chk_fruit = st.checkbox("🍎 과일", value=True)
+    with chk_cols[1]:
+        chk_drink = st.checkbox("🧃 음료수", value=True)
+    with chk_cols[2]:
+        chk_dessert = st.checkbox("🍰 디저트(빵/케이크/쿠키 등)", value=True)
+
+    selected_categories = []
+    if chk_fruit: selected_categories.append("과일")
+    if chk_drink: selected_categories.append("음료수")
+    if chk_dessert: selected_categories.append("디저트")
+
+    weekday_names = ["월요일", "화요일", "수요일", "목요일", "금요일"]
+    weekday_counts = {day: 0 for day in weekday_names}
+    matched_records = []
+
+    for row in quarter_data:
+        ymd_str = row.get("MLSV_YMD", "")
+        if not ymd_str:
+            continue
+
+        dt = datetime.datetime.strptime(ymd_str, "%Y%m%d")
+        weekday_idx = dt.weekday()
+        if weekday_idx >= 5:  # 주말 제외
+            continue
+
+        day_name = weekday_names[weekday_idx]
+        dish_nm = row.get("DDISH_NM", "")
+
+        # 선택한 카테고리에 해당하는 후식 찾기
+        found_list = classify_desserts(dish_nm, selected_categories)
+
+        if found_list:
+            weekday_counts[day_name] += len(found_list)
+            for item_name, cat in found_list:
+                matched_records.append({
+                    "날짜": dt.strftime("%Y-%m-%d"),
+                    "요일": day_name,
+                    "후식 이름": item_name,
+                    "분류": cat
+                })
+
+    # 요일별 결과 차트 및 요약
+    st.markdown("#### 🏆 요일별 후식 제공 건수")
+
+    if any(weekday_counts.values()):
+        # 가장 후식이 많이 나오는 요일 찾기
+        best_day = max(weekday_counts, key=weekday_counts.get)
+        max_count = weekday_counts[best_day]
+
+        st.success(f"🎉 최근 3개월간 후식이 가장 많이 나온 요일은 **{best_day}** ({max_count}회)입니다!")
+
+        # 요일별 통계 표/바 차트 표시
+        df_counts = pd.DataFrame(list(weekday_counts.items()), columns=["요일", "후식 수"])
+        st.bar_chart(df_counts, x="요일", y="후식 수")
+
+        # 선택한 후식이 나온 날짜 및 식단 상세 리스트
+        with st.expander(f"🔍 선택한 후식이 나온 날짜 목록 보기 (총 {len(matched_records)}건)"):
+            if matched_records:
+                df_records = pd.DataFrame(matched_records)
+                st.dataframe(df_records, use_container_state=True)
+            else:
+                st.write("해당 조건에 맞는 후식이 없습니다.")
+    else:
+        st.info("선택하신 후식 종류에 해당하는 급식 내역이 최근 3개월 동안 없습니다.")
+else:
+    st.info("최근 3개월 급식 데이터를 불러올 수 없습니다.")
