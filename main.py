@@ -130,8 +130,8 @@ else:
 st.markdown("---")
 
 # 3. 최근 3개월 후식 통계 분석 섹션
-st.subheader("📊 최근 3개월 후식 분석 & 요일별 통계")
-st.caption("지난 90일간의 급식 메뉴 데이터를 분석하여 요일별 후식 제공 빈도를 확인합니다.")
+st.subheader("📊 최근 3개월 후식 분석 & 빈도 통계")
+st.caption("지난 90일간의 급식 데이터를 기반으로 후식 총 제공 횟수 및 빈도를 분석합니다.")
 
 start_date = today_kst - datetime.timedelta(days=90)
 start_str = start_date.strftime("%Y%m%d")
@@ -159,10 +159,12 @@ if quarter_data:
     if chk_drink: selected_categories.append("음료수")
     if chk_dessert: selected_categories.append("디저트")
 
-    # 월화수목금 순서 고정 리스트
     weekday_names = ["월요일", "화요일", "수요일", "목요일", "금요일"]
     weekday_counts = {day: 0 for day in weekday_names}
     matched_records = []
+    
+    # 총 급식 제공일수 계산 (주말/휴일 제외 실제 급식일)
+    total_school_days = len(quarter_data)
 
     for row in quarter_data:
         ymd_str = row.get("MLSV_YMD", "")
@@ -189,28 +191,40 @@ if quarter_data:
                     "분류": cat
                 })
 
-    st.markdown("#### 🏆 요일별 후식 제공 건수")
+    st.markdown("#### 🏆 후식 제공 통계 및 제공 주기")
 
-    if any(weekday_counts.values()):
+    total_dessert_count = len(matched_records)
+
+    if total_dessert_count > 0 and total_school_days > 0:
+        # 평균 제공 주기 계산 (등교일 수 / 후식 총 제공 횟수)
+        avg_days = round(total_school_days / total_dessert_count, 1)
+
+        # 1. 요약 카드 표시
+        m_col1, m_col2, m_col3 = st.columns(3)
+        with m_col1:
+            st.metric(label="🗓️ 최근 3개월 총 급식일", value=f"{total_school_days}일")
+        with m_col2:
+            st.metric(label="🧁 후식 총 제공 횟수", value=f"{total_dessert_count}회")
+        with m_col3:
+            st.metric(label="🔄 평균 제공 주기", value=f"약 {avg_days}일마다 1번")
+
+        # 2. 요일별 후식 제공 횟수 안내
         best_day = max(weekday_counts, key=weekday_counts.get)
         max_count = weekday_counts[best_day]
 
-        st.success(f"🎉 최근 3개월간 후식이 가장 많이 나온 요일은 **{best_day}** ({max_count}회)입니다!")
+        st.success(f"🎉 최근 3개월간 **총 {total_dessert_count}번**의 후식이 나왔으며, 평균 **{avg_days}일마다 1번씩** 제공되었습니다. (가장 자주 나온 요일: **{best_day}** - {max_count}회)")
 
-        # 월~금 순서가 유지되도록 Categorical 지정
-        df_counts = pd.DataFrame(list(weekday_counts.items()), columns=["요일", "후식 수"])
+        # 3. 요일별 후식 제공 횟수 차트
+        df_counts = pd.DataFrame(list(weekday_counts.items()), columns=["요일", "제공 횟수"])
         df_counts["요일"] = pd.Categorical(df_counts["요일"], categories=weekday_names, ordered=True)
         df_counts = df_counts.sort_values("요일")
 
-        st.bar_chart(df_counts, x="요일", y="후식 수")
+        st.bar_chart(df_counts, x="요일", y="제공 횟수")
 
-        with st.expander(f"🔍 선택한 후식이 나온 날짜 목록 보기 (총 {len(matched_records)}건)"):
-            if matched_records:
-                df_records = pd.DataFrame(matched_records)
-                # 오타 수정: use_container_state -> use_container_width
-                st.dataframe(df_records, use_container_width=True)
-            else:
-                st.write("해당 조건에 맞는 후식이 없습니다.")
+        # 4. 상세 날짜 목록
+        with st.expander(f"🔍 선택한 후식이 나온 날짜 목록 보기 (총 {total_dessert_count}건)"):
+            df_records = pd.DataFrame(matched_records)
+            st.dataframe(df_records, use_container_width=True)
     else:
         st.info("선택하신 후식 종류에 해당하는 급식 내역이 최근 3개월 동안 없습니다.")
 else:
