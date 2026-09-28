@@ -26,25 +26,40 @@ DESSERT_KEYWORDS = {
 
 
 def fetch_meal_range(from_ymd: str, to_ymd: str):
-    """기간(FROM~TO) 내의 급식 데이터를 조회하는 함수"""
-    params = {
-        "Type": "json",
-        "ATPT_OFCDC_SC_CODE": OFFICE_CODE,
-        "SD_SCHUL_CODE": SCHOOL_CODE,
-        "MMEAL_SC_CODE": "2",  # 중식
-        "MLSV_FROM_YMD": from_ymd,
-        "MLSV_TO_YMD": to_ymd,
-        "pSize": 300
-    }
-    try:
-        response = requests.get(MEAL_INFO_URL, params=params, timeout=15)
-        data = response.json()
-        if "mealServiceDietInfo" in data:
-            return data["mealServiceDietInfo"][1]["row"]
-        return []
-    except Exception as e:
-        st.error(f"급식 데이터를 불러오는 중 오류가 발생했습니다: {e}")
-        return []
+    """기간(FROM~TO) 내의 모든 급식 데이터를 페이지네이션으로 빠짐없이 조회하는 함수"""
+    all_rows = []
+    p_index = 1
+    p_size = 100
+
+    while True:
+        params = {
+            "Type": "json",
+            "ATPT_OFCDC_SC_CODE": OFFICE_CODE,
+            "SD_SCHUL_CODE": SCHOOL_CODE,
+            "MMEAL_SC_CODE": "2",  # 중식
+            "MLSV_FROM_YMD": from_ymd,
+            "MLSV_TO_YMD": to_ymd,
+            "pIndex": p_index,
+            "pSize": p_size
+        }
+        try:
+            response = requests.get(MEAL_INFO_URL, params=params, timeout=15)
+            data = response.json()
+            
+            if "mealServiceDietInfo" in data:
+                rows = data["mealServiceDietInfo"][1]["row"]
+                all_rows.extend(rows)
+                # 가져온 데이터 개수가 pSize보다 작으면 마지막 페이지임
+                if len(rows) < p_size:
+                    break
+                p_index += 1
+            else:
+                break
+        except Exception as e:
+            st.error(f"급식 데이터를 불러오는 중 오류가 발생했습니다: {e}")
+            break
+
+    return all_rows
 
 
 def parse_menu_items(dish_nm: str, show_allergy: bool) -> list:
@@ -205,7 +220,22 @@ st.markdown("---")
 st.subheader("📊 최근 6개월 후식 분석 & 달력 현황")
 st.caption("지난 180일(6개월)간의 급식 데이터를 분석하고, 후식이 제공된 날을 달력에 표시합니다.")
 
-start_date = today_kst - datetime.timedelta(days=180)
+# 최근 6개 월 범위 계산 (현재월 포함 6달)
+year_months = []
+curr_year = today_kst.year
+curr_month = today_kst.month
+
+for i in range(6):
+    m = curr_month - i
+    y = curr_year
+    while m <= 0:
+        m += 12
+        y -= 1
+    year_months.append((y, m))
+
+# 가장 오래된 월의 1일부터 오늘까지를 검색 범위로 지정
+oldest_ym = year_months[-1]
+start_date = datetime.date(oldest_ym[0], oldest_ym[1], 1)
 start_str = start_date.strftime("%Y%m%d")
 end_str = today_kst.strftime("%Y%m%d")
 
@@ -213,7 +243,7 @@ end_str = today_kst.strftime("%Y%m%d")
 def load_6months_data(s_date, e_date):
     return fetch_meal_range(s_date, e_date)
 
-with st.spinner("최근 6개월 급식 데이터를 불러오는 중입니다..."):
+with st.spinner("최근 6개월 급식 데이터를 전수 조회 중입니다..."):
     half_year_data = load_6months_data(start_str, end_str)
 
 if half_year_data:
@@ -281,7 +311,7 @@ if half_year_data:
         with m_col3:
             st.metric(label="🔄 평균 제공 주기", value=f"약 {avg_days}일마다 1번")
 
-        # 최다 제공 요일 추출 및 자연스러운 안내 문구 생성
+        # 최다 제공 요일 추출
         best_day = max(weekday_counts, key=weekday_counts.get)
         max_count = weekday_counts[best_day]
 
@@ -301,21 +331,8 @@ if half_year_data:
         # 3. 1열로 구성된 최근 6개월 달력 시각화
         st.markdown("---")
         st.markdown("#### 📅 월별 디저트 달력 (디저트 나온 날: 🟦 파란색)")
-        
-        # 최근 6개월 연/월 추출
-        year_months = []
-        curr_year = today_kst.year
-        curr_month = today_kst.month
 
-        for i in range(6):
-            m = curr_month - i
-            y = curr_year
-            while m <= 0:
-                m += 12
-                y -= 1
-            year_months.append((y, m))
-
-        # 1열로 월별 달력 출력
+        # 1열로 월별 달력 6개 전체 출력
         for y, m in year_months:
             cal_html = render_month_calendar(y, m, dessert_by_date)
             st.markdown(cal_html, unsafe_allow_html=True)
