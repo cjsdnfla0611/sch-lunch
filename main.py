@@ -66,7 +66,6 @@ def classify_desserts(dish_nm: str, selected_categories: list) -> list:
     found_desserts = []
 
     for item in raw_items:
-        # 알레르기 번호 떼고 메뉴 이름만 추출
         clean_name = re.sub(r"\s*\([\d\.\s]+\)", "", item).strip()
         
         for category in selected_categories:
@@ -130,11 +129,10 @@ else:
 
 st.markdown("---")
 
-# 3. [신규 기능] 최근 3개월 후식 통계 분석 섹션
+# 3. 최근 3개월 후식 통계 분석 섹션
 st.subheader("📊 최근 3개월 후식 분석 & 요일별 통계")
 st.caption("지난 90일간의 급식 메뉴 데이터를 분석하여 요일별 후식 제공 빈도를 확인합니다.")
 
-# 3달치(90일) 날짜 범위 계산
 start_date = today_kst - datetime.timedelta(days=90)
 start_str = start_date.strftime("%Y%m%d")
 end_str = today_kst.strftime("%Y%m%d")
@@ -147,7 +145,6 @@ with st.spinner("최근 3개월 급식 데이터를 분석 중입니다..."):
     quarter_data = load_3months_data(start_str, end_str)
 
 if quarter_data:
-    # 체크박스 필터 선택 UI
     st.write("**확인하고 싶은 후식 종류를 선택하세요:**")
     chk_cols = st.columns(3)
     with chk_cols[0]:
@@ -162,6 +159,7 @@ if quarter_data:
     if chk_drink: selected_categories.append("음료수")
     if chk_dessert: selected_categories.append("디저트")
 
+    # 월화수목금 순서 고정 리스트
     weekday_names = ["월요일", "화요일", "수요일", "목요일", "금요일"]
     weekday_counts = {day: 0 for day in weekday_names}
     matched_records = []
@@ -179,7 +177,6 @@ if quarter_data:
         day_name = weekday_names[weekday_idx]
         dish_nm = row.get("DDISH_NM", "")
 
-        # 선택한 카테고리에 해당하는 후식 찾기
         found_list = classify_desserts(dish_nm, selected_categories)
 
         if found_list:
@@ -192,25 +189,26 @@ if quarter_data:
                     "분류": cat
                 })
 
-    # 요일별 결과 차트 및 요약
     st.markdown("#### 🏆 요일별 후식 제공 건수")
 
     if any(weekday_counts.values()):
-        # 가장 후식이 많이 나오는 요일 찾기
         best_day = max(weekday_counts, key=weekday_counts.get)
         max_count = weekday_counts[best_day]
 
         st.success(f"🎉 최근 3개월간 후식이 가장 많이 나온 요일은 **{best_day}** ({max_count}회)입니다!")
 
-        # 요일별 통계 표/바 차트 표시
+        # 월~금 순서가 유지되도록 Categorical 지정
         df_counts = pd.DataFrame(list(weekday_counts.items()), columns=["요일", "후식 수"])
+        df_counts["요일"] = pd.Categorical(df_counts["요일"], categories=weekday_names, ordered=True)
+        df_counts = df_counts.sort_values("요일")
+
         st.bar_chart(df_counts, x="요일", y="후식 수")
 
-        # 선택한 후식이 나온 날짜 및 식단 상세 리스트
         with st.expander(f"🔍 선택한 후식이 나온 날짜 목록 보기 (총 {len(matched_records)}건)"):
             if matched_records:
                 df_records = pd.DataFrame(matched_records)
-                st.dataframe(df_records, use_container_state=True)
+                # 오타 수정: use_container_state -> use_container_width
+                st.dataframe(df_records, use_container_width=True)
             else:
                 st.write("해당 조건에 맞는 후식이 없습니다.")
     else:
