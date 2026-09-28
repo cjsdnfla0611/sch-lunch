@@ -15,7 +15,7 @@ st.title("📅 우리 학교 달력별 급식")
 st.caption("송탄고등학교 전용 중식 급식 조회 및 후식 통계 분석 페이지입니다.")
 
 # ---------------- [ 설정 및 API 키 ] ----------------
-# "c7874afab65747d5ae5303ba3de5725d"
+# 🔑 발급받으신 나이스 API Key를 여기에 입력하세요!
 NEIS_API_KEY = "YOUR_NEIS_API_KEY"  
 
 MEAL_INFO_URL = "https://open.neis.go.kr/hub/mealServiceDietInfo"
