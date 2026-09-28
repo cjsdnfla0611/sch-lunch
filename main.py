@@ -83,41 +83,39 @@ def render_month_calendar(year: int, month: int, dessert_dict: dict):
     cal = calendar.Calendar(firstweekday=0)  # 월요일 시작
     month_days = cal.monthdatescalendar(year, month)
     
-    html = f"""
-    <div style="margin-bottom: 25px; border: 1px solid #E0E0E0; padding: 15px; border-radius: 10px; background-color: #FAFAFA;">
-        <h4 style="margin-top:0; text-align: center; color: #1E3A8A;">📅 {year}년 {month}월</h4>
-        <table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 13px;">
-            <thead>
-                <tr style="background-color: #F1F5F9; border-bottom: 2px solid #CBD5E1;">
-                    <th style="padding: 6px; color: #475569;">월</th>
-                    <th style="padding: 6px; color: #475569;">화</th>
-                    <th style="padding: 6px; color: #475569;">수</th>
-                    <th style="padding: 6px; color: #475569;">목</th>
-                    <th style="padding: 6px; color: #475569;">금</th>
-                    <th style="padding: 6px; color: #2563EB;">토</th>
-                    <th style="padding: 6px; color: #DC2626;">일</th>
-                </tr>
-            </thead>
-            <tbody>
-    """
+    html_parts = []
+    html_parts.append(
+        f'<div style="margin-bottom: 25px; border: 1px solid #E0E0E0; padding: 15px; border-radius: 10px; background-color: #FAFAFA;">'
+        f'<h4 style="margin-top:0; text-align: center; color: #1E3A8A;">📅 {year}년 {month}월</h4>'
+        f'<table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 13px;">'
+        f'<thead>'
+        f'<tr style="background-color: #F1F5F9; border-bottom: 2px solid #CBD5E1;">'
+        f'<th style="padding: 6px; color: #475569;">월</th>'
+        f'<th style="padding: 6px; color: #475569;">화</th>'
+        f'<th style="padding: 6px; color: #475569;">수</th>'
+        f'<th style="padding: 6px; color: #475569;">목</th>'
+        f'<th style="padding: 6px; color: #475569;">금</th>'
+        f'<th style="padding: 6px; color: #2563EB;">토</th>'
+        f'<th style="padding: 6px; color: #DC2626;">일</th>'
+        f'</tr>'
+        f'</thead>'
+        f'<tbody>'
+    )
     
     for week in month_days:
-        html += "<tr>"
+        html_parts.append('<tr>')
         for day in week:
-            # 해당 월의 날짜인지 확인
             is_current_month = (day.month == month)
             day_str = day.strftime("%Y-%m-%d")
             
             if not is_current_month:
-                html += '<td style="padding: 8px; color: #CBD5E1; background-color: #F8FAFC;"></td>'
+                html_parts.append('<td style="padding: 8px; color: #CBD5E1; background-color: #F8FAFC;"></td>')
                 continue
                 
             desserts = dessert_dict.get(day_str, [])
             has_dessert = len(desserts) > 0
             
-            # 스타일 설정
             if has_dessert:
-                # 디저트 나온 날은 파란색 강조
                 bg_color = "#D0E8FF"
                 border = "1px solid #60A5FA"
                 font_weight = "bold"
@@ -127,33 +125,28 @@ def render_month_calendar(year: int, month: int, dessert_dict: dict):
                 border = "1px solid #F1F5F9"
                 font_weight = "normal"
                 text_color = "#334155"
-                
-            # 요일별 색상 조정 (일요일/토요일)
-            if not has_dessert:
-                if day.weekday() == 6:  # 일요일
+                if day.weekday() == 6:
                     text_color = "#EF4444"
-                elif day.weekday() == 5:  # 토요일
+                elif day.weekday() == 5:
                     text_color = "#3B82F6"
 
             dessert_label = ""
             if has_dessert:
                 dessert_names = ", ".join([d[0] for d in desserts])
-                dessert_label = f'<div style="font-size: 10px; color: #1E3A8A; margin-top: 2px; word-break: break-all;">🍦 {dessert_names}</div>'
+                dessert_label = f'<div style="font-size: 10px; color: #1E3A8A; margin-top: 3px; word-break: break-all;">🍦 {dessert_names}</div>'
 
-            html += f"""
-            <td style="padding: 8px 4px; height: 55px; vertical-align: top; background-color: {bg_color}; border: {border}; font-weight: {font_weight}; color: {text_color};">
-                <div>{day.day}</div>
-                {dessert_label}
-            </td>
-            """
-        html += "</tr>"
+            cell_html = (
+                f'<td style="padding: 6px 2px; height: 55px; vertical-align: top; background-color: {bg_color}; '
+                f'border: {border}; font-weight: {font_weight}; color: {text_color};">'
+                f'<div>{day.day}</div>'
+                f'{dessert_label}'
+                f'</td>'
+            )
+            html_parts.append(cell_html)
+        html_parts.append('</tr>')
         
-    html += """
-            </tbody>
-        </table>
-    </div>
-    """
-    return html
+    html_parts.append('</tbody></table></div>')
+    return "".join(html_parts)
 
 
 # ---------------- [ 메인 화면 구성 ] ----------------
@@ -241,7 +234,7 @@ if half_year_data:
     weekday_names = ["월요일", "화요일", "수요일", "목요일", "금요일"]
     weekday_counts = {day: 0 for day in weekday_names}
     matched_records = []
-    dessert_by_date = {}  # 날짜별 디저트 저장 딕셔너리 ({'YYYY-MM-DD': [(이름, 카테고리)]})
+    dessert_by_date = {}
     
     total_school_days = len(half_year_data)
 
@@ -288,10 +281,15 @@ if half_year_data:
         with m_col3:
             st.metric(label="🔄 평균 제공 주기", value=f"약 {avg_days}일마다 1번")
 
+        # 최다 제공 요일 추출 및 자연스러운 안내 문구 생성
         best_day = max(weekday_counts, key=weekday_counts.get)
         max_count = weekday_counts[best_day]
 
-        st.success(f"🎉 최근 6개월간 **총 {total_dessert_count}번**의 후식이 나왔으며, 평균 **{avg_days}일마다 1번씩** 제공되었습니다. (가장 자주 나온 요일: **{best_day}** - {max_count}회)")
+        st.success(
+            f"🎉 최근 6개월 동안 총 **{total_school_days}번의 급식 중 {total_dessert_count}번** 후식이 제공되었으며, "
+            f"평균 **{avg_days}일마다 1번꼴**로 나왔습니다.\n\n"
+            f"📌 요일 중에서는 **{best_day}**에 후식이 가장 많이 나왔습니다. (총 {max_count}회 제공)"
+        )
 
         # 2. 요일별 후식 제공 차트
         df_counts = pd.DataFrame(list(weekday_counts.items()), columns=["요일", "제공 횟수"])
@@ -304,7 +302,7 @@ if half_year_data:
         st.markdown("---")
         st.markdown("#### 📅 월별 디저트 달력 (디저트 나온 날: 🟦 파란색)")
         
-        # 최근 6개월의 연/월 목록 추출 (현재 월부터 역순으로 6개 월)
+        # 최근 6개월 연/월 추출
         year_months = []
         curr_year = today_kst.year
         curr_month = today_kst.month
@@ -317,7 +315,7 @@ if half_year_data:
                 y -= 1
             year_months.append((y, m))
 
-        # 1열로 달력 출력
+        # 1열로 월별 달력 출력
         for y, m in year_months:
             cal_html = render_month_calendar(y, m, dessert_by_date)
             st.markdown(cal_html, unsafe_allow_html=True)
